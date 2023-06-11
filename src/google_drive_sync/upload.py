@@ -1,66 +1,30 @@
-#!/usr/bin/python3
-
-"""Example cooment to make pylint stop giving me errors."""
-
 import datetime
 import hashlib
 import mimetypes
 import time
 import os
-import httplib2
 
 from apiclient import discovery
-from oauth2client import client
-from oauth2client import tools
-# from oauth2client.tools import run
+from google_auth_httplib2 import Request
+from google.oauth2.credentials import Credentials
 
-from oauth2client.file import Storage
-from apiclient.http import MediaFileUpload
-# Import our folder uploading script
-# import initial_upload
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.http import MediaFileUpload
 
-# If modifying these scopes, delete your previously saved credentials
-# at ~/.credentials/drive-python-quickstart.json
 SCOPES = ['https://www.googleapis.com/auth/drive.metadata.readonly',
           'https://www.googleapis.com/auth/drive.file',
           'https://www.googleapis.com/auth/drive']
-CLIENT_SECRET_FILE = 'client_secret.json'
-APPLICATION_NAME = 'Drive Sync'
-
-# Declare full path to folder and folder name
-FULL_PATH = r'PUT YOUR FULL FOLDER PATH HERE'
-DIR_NAME = 'PUT YOUR FOLDER NAME HERE'
-# Or simply
-# DIR_NAME = FULL_PATH.split('/')[-1]
-
-# Don't really need it here
 GOOGLE_MIME_TYPES = {
     'application/vnd.google-apps.document':
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    # 'application/vnd.oasis.opendocument.text',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'application/vnd.google-apps.spreadsheet':
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    # 'application/vnd.oasis.opendocument.spreadsheet',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'application/vnd.google-apps.presentation':
-    'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-    # 'application/vnd.oasis.opendocument.presentation'
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation'
 }
 
-# 'application/vnd.google-apps.folder': '',
-# 'application/vnd.google-apps.form': 'application/pdf',
-# 'application/vnd.google-apps.fusiontable': '',
-# 'application/vnd.google-apps.map': 'application/pdf',
-# 'application/vnd.google-apps.photo': 'image/jpeg',
-# 'application/vnd.google-apps.file': '',
-# 'application/vnd.google-apps.sites': '',
-# 'application/vnd.google-apps.unknown': '',
-# 'application/vnd.google-apps.video': '',
-# 'application/vnd.google-apps.audio': '',
-# 'application/vnd.google-apps.drive-sdk': ''
-# 'application/octet-stream': 'text/plain'
 
-
-def folder_upload(service):
+def folder_upload(service, local_folder: str):
     '''Uploads folder and all it's content (if it doesnt exists)
     in root folder.
 
@@ -75,7 +39,7 @@ def folder_upload(service):
 
     parents_id = {}
 
-    for root, _, files in os.walk(FULL_PATH, topdown=True):
+    for root, _, files in os.walk(local_folder, topdown=True):
         last_dir = root.split('/')[-1]
         pre_last_dir = root.split('/')[-2]
         if pre_last_dir not in parents_id.keys():
@@ -104,7 +68,7 @@ def folder_upload(service):
     return parents_id
 
 
-def check_upload(service):
+def check_upload(service, local_folder: str, remote_folder: str):
     """Checks if folder is already uploaded,
     and if it's not, uploads it.
 
@@ -124,19 +88,17 @@ def check_upload(service):
     items = results.get('files', [])
 
     # Check if folder exists, and then create it or get this folder's id.
-    if DIR_NAME in [item['name'] for item in items]:
-        folder_id = [item['id']for item in items
-                     if item['name'] == DIR_NAME][0]
+    if remote_folder in [item['name'] for item in items]:
+        folder_id = [item['id'] for item in items
+                     if item['name'] == remote_folder][0]
     else:
-        parents_id = folder_upload(service)
-        folder_id = parents_id[DIR_NAME]
+        parents_id = folder_upload(service, local_folder)
+        folder_id = parents_id[remote_folder]
 
-    return folder_id, FULL_PATH
-
-
+    return folder_id, local_folder
 
 
-def get_credentials():
+def get_credentials(creds_file: str, token_file: str):
     """Gets valid user credentials from storage.
 
     If nothing has been stored, or if the stored credentials are invalid,
@@ -145,25 +107,25 @@ def get_credentials():
     Returns:
         Credentials, the obtained credential.
     """
-    home_dir = os.path.expanduser('~')
-    credential_dir = os.path.join(home_dir, '.credentials')
-    if not os.path.exists(credential_dir):
-        os.makedirs(credential_dir)
-    credential_path = os.path.join(credential_dir,
-                                   'drive-python-sync.json')
+    creds = None
+    # The file token.json stores the user's access and refresh tokens, and is
+    # created automatically when the authorization flow completes for the first
+    # time.
+    if os.path.exists(token_file):
+        creds = Credentials.from_authorized_user_file(token_file, SCOPES)
+    # If there are no (valid) credentials available, let the user log in.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                creds_file, SCOPES)
+            creds = flow.run_local_server(port=0)
+        # Save the credentials for the next run
+        with open(token_file, 'w') as token:
+            token.write(creds.to_json())
 
-    store = Storage(credential_path)
-    credentials = store.get()
-    if not credentials or credentials.invalid:
-        flow = client.flow_from_clientsecrets(CLIENT_SECRET_FILE, SCOPES)
-        flow.user_agent = APPLICATION_NAME
-        # if flags:
-        credentials = tools.run_flow(flow, store, flags=None)
-        # else:  # Needed only for compatibility with Python 2.6
-        # flags = None
-        # credentials = tools.run_flow(flow, store, flags)
-        print('Storing credentials to ', credential_path)
-    return credentials
+    return creds
 
 
 def get_tree(folder_name, tree_list, root, parents_id, service):
@@ -216,19 +178,19 @@ def by_lines(input_str):
     return input_str.count(os.path.sep)
 
 
-def main():
+def upload(creds_file: str, local_folder: str, remote_folder: str):
     """Syncronizes computer folder with Google Drive folder.
 
     Checks files if they exist, uploads new files and subfolders,
     deletes old files from Google Drive and refreshes existing stuff.
     """
     credentials = get_credentials()
-    http = credentials.authorize(httplib2.Http())
-    service = discovery.build('drive', 'v3', http=http)
+    service = discovery.build('drive', 'v3', credentials=credentials)
+    service._http.timeout = 500
 
     # Get id of Google Drive folder and it's path (from other script)
     # folder_id, full_path = initial_upload.check_upload(service)
-    folder_id, full_path = check_upload(service)
+    folder_id, full_path = check_upload(service, local_folder, remote_folder)
     folder_name = full_path.split(os.path.sep)[-1]
     tree_list = []
     root = ''
@@ -312,7 +274,7 @@ def main():
         refresh_files = [f for f in items if f['name'] in os_files]
         remove_files = [f for f in items if f['name'] not in os_files]
         upload_files = [f for f in os_files
-                        if f not in [j['name']for j in items]]
+                        if f not in [j['name'] for j in items]]
 
         # Check files that exist both on Drive and on PC
         for drive_file in refresh_files:
@@ -356,14 +318,12 @@ def main():
 
         # Remove old files from Drive
         for drive_file in remove_files:
-
             file_id = [f['id'] for f in items
                        if f['name'] == drive_file['name']][0]
             service.files().delete(fileId=file_id).execute()
 
         # Upload new files on Drive
         for os_file in upload_files:
-
             file_dir = os.path.join(variable, os_file)
 
             # File's new content.
@@ -386,6 +346,3 @@ def main():
         last_dir = folder_dir.split('/')[-1]
         folder_id = parents_id[last_dir]
         service.files().delete(fileId=folder_id).execute()
-
-if __name__ == '__main__':
-    main()
