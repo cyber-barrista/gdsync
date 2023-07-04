@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gdsync666"
-version = "0.0.1"
+version = "0.0.2"
 description = "Bidirectionally sync your local folder with a one from Google Drive"
 readme = "README.md"
 authors = [{ name = "Daniil Chalov", email = "cyber.barrista@gmail.com" }]
