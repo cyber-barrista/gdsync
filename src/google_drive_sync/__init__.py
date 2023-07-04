@@ -1,4 +1,4 @@
-from upload import upload
-from download import download
+from .download import download
+from .upload import upload
 
 __all__ = ["upload", "download"]

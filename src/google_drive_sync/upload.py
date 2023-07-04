@@ -5,7 +5,7 @@ import time
 import os
 
 from apiclient import discovery
-from google_auth_httplib2 import Request
+from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -82,7 +82,7 @@ def check_upload(service, local_folder: str, remote_folder: str):
 
     results = service.files().list(
         pageSize=100,
-        q="'root' in parents and trashed != True and \
+        q="trashed = false and \
         mimeType='application/vnd.google-apps.folder'").execute()
 
     items = results.get('files', [])
@@ -115,7 +115,7 @@ def get_credentials(creds_file: str, token_file: str):
         creds = Credentials.from_authorized_user_file(token_file, SCOPES)
     # If there are no (valid) credentials available, let the user log in.
     if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
+        if False:  # creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file(
@@ -184,9 +184,9 @@ def upload(creds_file: str, local_folder: str, remote_folder: str):
     Checks files if they exist, uploads new files and subfolders,
     deletes old files from Google Drive and refreshes existing stuff.
     """
-    credentials = get_credentials()
+    credentials = get_credentials(creds_file, 'token.json')
     service = discovery.build('drive', 'v3', credentials=credentials)
-    service._http.timeout = 500
+    service._http.timeout = 10000  # Set the timeout value (in seconds)
 
     # Get id of Google Drive folder and it's path (from other script)
     # folder_id, full_path = initial_upload.check_upload(service)
@@ -209,7 +209,7 @@ def upload(creds_file: str, local_folder: str, remote_folder: str):
             os_tree_list.append(os.path.join(var_path, name))
 
     # old folders on drive
-    remove_folders = list(set(tree_list).difference(set(os_tree_list)))
+    # remove_folders = list(set(tree_list).difference(set(os_tree_list)))
     # new folders on drive, which you dont have(i suppose hehe)
     upload_folders = list(set(os_tree_list).difference(set(tree_list)))
     # foldes that match
@@ -223,7 +223,7 @@ def upload(creds_file: str, local_folder: str, remote_folder: str):
 
     # Here we upload new (abcent on Drive) folders
     for folder_dir in upload_folders:
-        var = os.path.join(full_path.split(os.path.sep)[0:-1]) + os.path.sep
+        var = os.path.join(*full_path.split(os.path.sep)[0:-1]) + os.path.sep
         variable = var + folder_dir
         last_dir = folder_dir.split(os.path.sep)[-1]
         pre_last_dir = folder_dir.split(os.path.sep)[-2]
@@ -316,12 +316,6 @@ def upload(creds_file: str, local_folder: str, remote_folder: str):
                                        media_body=media_body,
                                        fields='id').execute()
 
-        # Remove old files from Drive
-        for drive_file in remove_files:
-            file_id = [f['id'] for f in items
-                       if f['name'] == drive_file['name']][0]
-            service.files().delete(fileId=file_id).execute()
-
         # Upload new files on Drive
         for os_file in upload_files:
             file_dir = os.path.join(variable, os_file)
@@ -336,13 +330,13 @@ def upload(creds_file: str, local_folder: str, remote_folder: str):
                                    media_body=media_body,
                                    fields='id').execute()
 
-    remove_folders = sorted(remove_folders, key=by_lines, reverse=True)
+    # remove_folders = sorted(remove_folders, key=by_lines, reverse=True)
 
     # Delete old folders from Drive
-    for folder_dir in remove_folders:
-        var = (os.path.sep).join(full_path.split(
-            os.path.sep)[0:-1]) + os.path.sep
-        variable = var + folder_dir
-        last_dir = folder_dir.split('/')[-1]
-        folder_id = parents_id[last_dir]
-        service.files().delete(fileId=folder_id).execute()
+    # for folder_dir in remove_folders:
+    #     var = (os.path.sep).join(full_path.split(
+    #         os.path.sep)[0:-1]) + os.path.sep
+    #     variable = var + folder_dir
+    #     last_dir = folder_dir.split('/')[-1]
+    #     folder_id = parents_id[last_dir]
+    #     service.files().delete(fileId=folder_id).execute()

@@ -8,9 +8,9 @@ import hashlib
 
 from apiclient import discovery
 from google.oauth2.credentials import Credentials
-from google_auth_httplib2 import Request
+from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
+from googleapiclient.http import MediaIoBaseDownload
 
 SCOPES = ['https://www.googleapis.com/auth/drive.metadata.readonly',
           'https://www.googleapis.com/auth/drive.file',
@@ -205,8 +205,9 @@ def download(creds_file: str, local_folder: str, remote_folder: str):
     Creates a Google Drive API service object and outputs the names and IDs
     for up to 10 files.
     """
-    credentials = get_credentials(creds_file, '../../token.json')
+    credentials = get_credentials(creds_file, 'token.json')
     service = discovery.build('drive', 'v3', credentials=credentials)
+    service._http.timeout = 10000  # Set the timeout value (in seconds)
 
     # Get id of Google Drive folder and it's path (from other script)
     # folder_id, full_path = initial_upload.check_upload(service)
@@ -249,7 +250,7 @@ def download(creds_file: str, local_folder: str, remote_folder: str):
 
         folder_id = parents_id[last_dir]
         results = service.files().list(
-            pageSize=20, q=('%r in parents' % folder_id)).execute()
+            pageSize=20, q=('%r in parents and trashed = false' % folder_id)).execute()
 
         items = results.get('files', [])
         os.makedirs(variable)
@@ -272,7 +273,7 @@ def download(creds_file: str, local_folder: str, remote_folder: str):
         results = service.files().list(
             pageSize=1000,
             q=('%r in parents and \
-            mimeType!="application/vnd.google-apps.folder"' % folder_id),
+            mimeType!="application/vnd.google-apps.folder" and trashed = false' % folder_id),
             fields="files(id, name, mimeType, \
                 modifiedTime, md5Checksum)").execute()
 
@@ -311,10 +312,10 @@ def download(creds_file: str, local_folder: str, remote_folder: str):
             download_file_from_gdrive(variable, drive_file, service)
 
     # Delete old and unwanted folders from computer
-    remove_folders = sorted(remove_folders, key=by_lines, reverse=True)
+    # remove_folders = sorted(remove_folders, key=by_lines, reverse=True)
 
-    for folder_dir in remove_folders:
-        # var = '/'.join(full_path.split('/')[0:-1]) + '/'
-        variable = var + folder_dir
-        last_dir = folder_dir.split(os.path.sep)[-1]
-        shutil.rmtree(variable)
+    # for folder_dir in remove_folders:
+    #     # var = '/'.join(full_path.split('/')[0:-1]) + '/'
+    #     variable = var + folder_dir
+    #     last_dir = folder_dir.split(os.path.sep)[-1]
+    #     shutil.rmtree(variable)
